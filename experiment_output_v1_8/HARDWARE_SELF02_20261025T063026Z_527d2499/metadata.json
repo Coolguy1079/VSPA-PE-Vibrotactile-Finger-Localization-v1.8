@@ -1,0 +1,102 @@
+{
+  "participant_id": "SELF02",
+  "session_id": "527d2499-7cd9-4eba-925d-f1c1ca1192de",
+  "software_version": "VSPA_PE_TIMING_COMPARISON_v1.8",
+  "schema_version": "1.8.0",
+  "created_at_utc": "2026-10-25T06:30:26.017+00:00",
+  "session_status": "completed",
+  "simulation_mode": false,
+  "config": {
+    "single_rounds": 10,
+    "pair_rounds": 10,
+    "run_single": true,
+    "run_pair": true,
+    "timing_comparison_enabled": true,
+    "baseline_pair_gap_sec": 2.0,
+    "long_pair_gap_sec": 4.0,
+    "stimulus_duration_ms": 1000,
+    "rtp_drive_value": 48,
+    "adjacent_pair_gap_sec": 2.0,
+    "pre_trial_sec": 1.0,
+    "response_delay_after_done_sec": 0.35,
+    "response_timeout_sec": 8.0,
+    "rest_between_trials_sec": 2.0,
+    "ask_confounding": true,
+    "nominal_frequency_hz": 235.0
+  },
+  "randomization_seed": 6667953846969279736,
+  "randomization_algorithm": "balanced-regular-matrix-2-interval-v2",
+  "schedule_sha256": "2e5f66c75cd7474aad9c9d9f57dc556dfd8316d258c3533f73394cdbb7a580e0",
+  "python_version": "3.12.12",
+  "platform": "macOS-26.6.2-arm64-i386-64bit",
+  "planned_trial_count": 135,
+  "saved_trial_rows": 135,
+  "finger_channel_map": {
+    "pinky": 0,
+    "ring": 1,
+    "middle": 2,
+    "index": 3,
+    "thumb": 4
+  },
+  "finger_key_map": {
+    "pinky": "a",
+    "ring": "s",
+    "middle": "d",
+    "index": "f",
+    "thumb": "space"
+  },
+  "ordered_adjacent_pairs": [
+    [
+      "pinky",
+      "ring"
+    ],
+    [
+      "ring",
+      "pinky"
+    ],
+    [
+      "ring",
+      "middle"
+    ],
+    [
+      "middle",
+      "ring"
+    ],
+    [
+      "middle",
+      "index"
+    ],
+    [
+      "index",
+      "middle"
+    ],
+    [
+      "index",
+      "thumb"
+    ],
+    [
+      "thumb",
+      "index"
+    ]
+  ],
+  "firmware_protocol": "VSPA_PE_RTP_1.5",
+  "physical_motion_measured": false,
+  "physical_frequency_measured": false,
+  "physical_velocity_measured": false,
+  "physical_voltage_measured": false,
+  "timing_definition": "Host perf_counter at attempted PLAY write, START/DONE receipt, and GUI response opening; DONE includes the firmware millisecond timer.",
+  "interval_comparison_design": "within-session; 4 baseline + 4 long per pair round; 5/5 per ordered pair at 10 rounds",
+  "timing_outcomes_not_physical_onset": true,
+  "fixed_orientation_in_randomized_scores": false,
+  "complete_multifinger_sequence_included": false,
+  "files_sha256": {
+    "vspa_protocol.py": "09dc861fda7142cc9f45ebc398e8c82dd99e48f10b3583c7ed7870ac33e79a8b",
+    "self_test_gui_v1_8.py": "4cfa2efc6e858f05894f947506d1042ae8bfefb8be74597659955e24e1f53ab5",
+    "firmware/firmware_vspa_rtp_v1_5/firmware_vspa_rtp_v1_5.ino": "80ed2073bf716c7eb4119e36874482bf187c2f0f37aabadc7f22a3d2b9b1bea0"
+  },
+  "serial_port": "/dev/cu.usbmodem101",
+  "serial_baud": 9600,
+  "firmware_response": "READY,VSPA_PE_RTP_1.5,mask=11111",
+  "ended_at_utc": "2026-10-25T06:50:46.142+00:00",
+  "end_reason": ""
+}
