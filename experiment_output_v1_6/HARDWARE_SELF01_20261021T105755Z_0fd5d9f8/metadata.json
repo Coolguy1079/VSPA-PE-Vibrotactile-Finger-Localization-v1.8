@@ -1,0 +1,97 @@
+{
+  "participant_id": "SELF01",
+  "session_id": "0fd5d9f8-4c18-48d2-bd8b-925ebbdbdb77",
+  "software_version": "VSPA_PE_SELF_TEST_v1.6",
+  "schema_version": "1.6.0",
+  "created_at_utc": "2026-10-21T10:57:55.585+00:00",
+  "session_status": "completed",
+  "simulation_mode": false,
+  "config": {
+    "single_rounds": 10,
+    "pair_rounds": 10,
+    "run_single": true,
+    "run_pair": true,
+    "stimulus_duration_ms": 1000,
+    "rtp_drive_value": 48,
+    "adjacent_pair_gap_sec": 2.0,
+    "pre_trial_sec": 1.0,
+    "response_delay_after_done_sec": 0.35,
+    "response_timeout_sec": 8.0,
+    "rest_between_trials_sec": 2.0,
+    "ask_confounding": true,
+    "nominal_frequency_hz": 235.0
+  },
+  "randomization_seed": 607881877308092444,
+  "randomization_algorithm": "python-random-shuffle-without-replacement-v1",
+  "schedule_sha256": "434b86e4e4247bec48674ff02fa6c9bc1f17630880537b983ba1ccbae8fb9684",
+  "python_version": "3.12.12",
+  "platform": "macOS-26.6.2-arm64-i386-64bit",
+  "planned_trial_count": 135,
+  "saved_trial_rows": 135,
+  "finger_channel_map": {
+    "pinky": 0,
+    "ring": 1,
+    "middle": 2,
+    "index": 3,
+    "thumb": 4
+  },
+  "finger_key_map": {
+    "pinky": "a",
+    "ring": "s",
+    "middle": "d",
+    "index": "f",
+    "thumb": "space"
+  },
+  "ordered_adjacent_pairs": [
+    [
+      "pinky",
+      "ring"
+    ],
+    [
+      "ring",
+      "pinky"
+    ],
+    [
+      "ring",
+      "middle"
+    ],
+    [
+      "middle",
+      "ring"
+    ],
+    [
+      "middle",
+      "index"
+    ],
+    [
+      "index",
+      "middle"
+    ],
+    [
+      "index",
+      "thumb"
+    ],
+    [
+      "thumb",
+      "index"
+    ]
+  ],
+  "firmware_protocol": "VSPA_PE_RTP_1.5",
+  "physical_motion_measured": false,
+  "physical_frequency_measured": false,
+  "physical_velocity_measured": false,
+  "physical_voltage_measured": false,
+  "timing_definition": "Host perf_counter at attempted PLAY write, START/DONE receipt, and GUI response opening; DONE includes the firmware millisecond timer.",
+  "fixed_orientation_in_randomized_scores": false,
+  "complete_multifinger_sequence_included": false,
+  "files_sha256": {
+    "vspa_protocol.py": "9b21d6182b8ed8c3ef4378a7ff2abae97f055022eaaea04a155e177f76154655",
+    "self_test_gui_v1_6.py": "fe993d2b6f64622b7adaf49646aff776faccf026884c8e4743ddcd1f0fb3c27c",
+    "firmware/firmware_vspa_rtp_v1_5/firmware_vspa_rtp_v1_5.ino": "80ed2073bf716c7eb4119e36874482bf187c2f0f37aabadc7f22a3d2b9b1bea0"
+  },
+  "serial_port": "/dev/cu.usbmodem101",
+  "serial_baud": 9600,
+  "firmware_response": "READY,VSPA_PE_RTP_1.5,mask=11111",
+  "ended_at_utc": "2026-10-21T11:16:54.572+00:00",
+  "end_reason": ""
+}
