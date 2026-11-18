@@ -1,0 +1,98 @@
+{
+  "repository": "Coolguy1079/VSPA-PE-Vibrotactile-Finger-Localization-v1.8",
+  "commit": "6041d4adc8f4c507671996160b7b0f3a439b69ef",
+  "snapshot_path": "archive/acquisition_v1_8",
+  "purpose": "Exact pre-documentation non-data repository files; excludes caches and research data.",
+  "files": [
+    {
+      "path": "CHANGELOG_v1_8.md",
+      "bytes": 1254,
+      "sha256": "d3efbab49dda6811e5ae619a14ef0f0c77e598ecaf452e50151e79960c47d894",
+      "git_blob_sha1": "d728fa9a2f4ef00fb7dff21ddaf0c07fa5259ca0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7261,
+      "sha256": "03fac023a7a096b16ba5732aef0b9a78c3b304c9216ea8ea97d8e8ef851fad0a",
+      "git_blob_sha1": "16cc266e8b140a154d9c90550b875b349c48e38f"
+    },
+    {
+      "path": "SCHEDULE_PREVIEW_NOT_RESEARCH_DATA.csv",
+      "bytes": 2794,
+      "sha256": "3fe7e2f2279dc69b3049a1936815d5a3511ac9f0170c1f4865c714c18eb7cbc8",
+      "git_blob_sha1": "90771f16f9a08ae5b71b43ef75c5f0c4a6e09add"
+    },
+    {
+      "path": "START_HERE.txt",
+      "bytes": 1076,
+      "sha256": "2f08ccab7ab0aa8112a98c871cda7b955a556293df6242ae7c63ddfb43e98244",
+      "git_blob_sha1": "c51b621e0e8de37a01172e14ade5f9861de5f959"
+    },
+    {
+      "path": "analyze_timing.py",
+      "bytes": 8388,
+      "sha256": "662e9d341aafebbb718b18fb098ae5d2bc4b6c0ea8b77423ea0cde640406d917",
+      "git_blob_sha1": "f646eadf3e0382ebd95e79676624b9bbcd1164f9"
+    },
+    {
+      "path": "baseline_v1_6/analyze_sessions_v1_6.py",
+      "bytes": 5837,
+      "sha256": "91df18fe72f8c14385ca116d35c184e46be9e6f6703b19d0415b3ffcdc322d73",
+      "git_blob_sha1": "2348685d6eb086433c7cfad233531ae90d567e0b"
+    },
+    {
+      "path": "baseline_v1_6/self_test_gui_v1_6.py",
+      "bytes": 27583,
+      "sha256": "fe993d2b6f64622b7adaf49646aff776faccf026884c8e4743ddcd1f0fb3c27c",
+      "git_blob_sha1": "a87f2c0f812c9649a304dfe16b56a83953c63bc0"
+    },
+    {
+      "path": "baseline_v1_6/vspa_protocol.py",
+      "bytes": 31389,
+      "sha256": "9b21d6182b8ed8c3ef4378a7ff2abae97f055022eaaea04a155e177f76154655",
+      "git_blob_sha1": "9a96df8965cb85a92ee63fab3f1d69e82748eec3"
+    },
+    {
+      "path": "diagnose_arduino.py",
+      "bytes": 3733,
+      "sha256": "b7b62947f644d04ebb4863dca9cb052d349bac5c1e66196d1900cb8f070950a7",
+      "git_blob_sha1": "bf3aebf3233b1a603611e811bd0335de2e743c27"
+    },
+    {
+      "path": "firmware/firmware_vspa_rtp_v1_5/firmware_vspa_rtp_v1_5.ino",
+      "bytes": 7952,
+      "sha256": "80ed2073bf716c7eb4119e36874482bf187c2f0f37aabadc7f22a3d2b9b1bea0",
+      "git_blob_sha1": "82850dd900865161e0a1bdeafc24abc163e8eafa"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 17,
+      "sha256": "95fdad543f34e4a191cd17219e1a73b4ab4b0b5ad9806a25c3b49e7b48ab8ca0",
+      "git_blob_sha1": "731aac6808db072df3f582a3c9c1463ea8fbd80e"
+    },
+    {
+      "path": "self_test_gui_v1_8.py",
+      "bytes": 28184,
+      "sha256": "4cfa2efc6e858f05894f947506d1042ae8bfefb8be74597659955e24e1f53ab5",
+      "git_blob_sha1": "f148ed95da456adfae37032ed7e3a487864de679"
+    },
+    {
+      "path": "tests/test_serial_timing.py",
+      "bytes": 2086,
+      "sha256": "024dd9ebf90c78e55afd4d77979161f38243d07cbb3e4db59c16e1bd8deccabf",
+      "git_blob_sha1": "764ddb7f6eec9093fad03e3bf016e3b1d8ee181a"
+    },
+    {
+      "path": "tests/test_v1_8.py",
+      "bytes": 5772,
+      "sha256": "7803803d9722e1e96647932f23458c1202168d48898ab1098d7756b43911fb22",
+      "git_blob_sha1": "9e7687dab56a934871026575c69a49299999d7b5"
+    },
+    {
+      "path": "vspa_protocol.py",
+      "bytes": 36364,
+      "sha256": "09dc861fda7142cc9f45ebc398e8c82dd99e48f10b3583c7ed7870ac33e79a8b",
+      "git_blob_sha1": "867fafe335f1368b5f716ee6e438c53718947e6d"
+    }
+  ]
+}

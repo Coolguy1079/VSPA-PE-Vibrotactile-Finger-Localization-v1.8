@@ -1,4 +1,6 @@
 """Offline v1.8 regressions: synthetic/mock data are NOT physical or participant data."""
+# Offline protocol regressions covering schedules, scoring, persistence and source invariants.
+# Synthetic rows exist only inside temporary directories and are not research observations.
 import sys
 import csv
 import tempfile
@@ -11,8 +13,14 @@ from dataclasses import asdict, replace
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import vspa_protocol as p
 from analyze_timing import analyze
+from verify_documentation import (
+    ARCHIVE, FIRMWARE, ORIGINAL_FIRMWARE_SHA256,
+    firmware_tokens, python_ast, python_tokens, verify,
+)
 
+# Exercise deterministic software invariants with schedules and temporary synthetic session files.
 class TimingProtocolTests(unittest.TestCase):
+    # Check all eight ordered pairs, both interval margins and assigned gaps over 1000 seeds.
     def test_1000_random_seeds_have_exact_balance(self):
         for seed in range(1000):
             trials=p.build_schedule(seed,p.ProtocolConfig())
@@ -28,10 +36,12 @@ class TimingProtocolTests(unittest.TestCase):
                 self.assertEqual({t.fingers for t in br},set(p.ORDERED_ADJACENT_PAIRS))
                 for t in br:
                     self.assertEqual(t.pair_gap_sec,2.0 if t.timing_condition=='baseline_2p0s' else 4.0)
+    # Require repeated seed/configuration inputs to reproduce the same canonical schedule hash.
     def test_seed_reconstructibility(self):
         c=p.ProtocolConfig()
         self.assertEqual(p.schedule_hash(p.build_schedule(2026,c)),p.schedule_hash(p.build_schedule(2026,c)))
         self.assertNotEqual(p.schedule_hash(p.build_schedule(2026,c)),p.schedule_hash(p.build_schedule(2027,c)))
+    # Reject unbalanced/invalid comparisons and verify optional singles add their own orientation block.
     def test_invalid_comparisons_and_optional_singles(self):
         for kwargs in [{'pair_rounds':9},{'baseline_pair_gap_sec':1.4},
                        {'baseline_pair_gap_sec':4.0},{'long_pair_gap_sec':1.5},
@@ -40,16 +50,31 @@ class TimingProtocolTests(unittest.TestCase):
         schedule=p.build_schedule(2026,replace(p.ProtocolConfig(),run_single=True,single_rounds=1))
         self.assertEqual(len(schedule),90)
         self.assertEqual(sum(t.orientation for t in schedule),5)
-    def test_source_firmware_and_serial_transport_unchanged(self):
+    # Keep the original firmware hash pinned and compare documented executable transport/firmware content.
+    def test_firmware_and_serial_transport_executable_equivalence(self):
         here=Path(__file__).resolve().parents[1]
-        self.assertEqual(hashlib.sha256((here/'firmware/firmware_vspa_rtp_v1_5/firmware_vspa_rtp_v1_5.ino').read_bytes()).hexdigest(),
-                         '80ed2073bf716c7eb4119e36874482bf187c2f0f37aabadc7f22a3d2b9b1bea0')
+        archived_firmware=here/ARCHIVE/FIRMWARE
+        self.assertEqual(hashlib.sha256(archived_firmware.read_bytes()).hexdigest(),
+                         ORIGINAL_FIRMWARE_SHA256)
+        self.assertEqual(firmware_tokens(archived_firmware.read_text()),
+                         firmware_tokens((here/FIRMWARE).read_text()))
         old=(here/'baseline_v1_6/vspa_protocol.py').read_text()
         new=(here/'vspa_protocol.py').read_text()
-        def get_class(s): return s[s.index('class HapticDevice:'):s.index('\n\nTRIAL_FIELDS',s.index('class HapticDevice:'))]
-        self.assertEqual(get_class(old),get_class(new))
+        # Comments may change; all transport statements, literals and its docstrings must match.
+        self.assertEqual(python_ast(old,class_name='HapticDevice'),
+                         python_ast(new,class_name='HapticDevice'))
+        self.assertEqual(python_tokens(old,class_name='HapticDevice'),
+                         python_tokens(new,class_name='HapticDevice'))
         self.assertEqual(p.ProtocolConfig().rtp_drive_value,48)
         self.assertEqual(p.ProtocolConfig().stimulus_duration_ms,1000)
+    # Guard all production modules and all frozen-source hashes, permitting only named documentation changes.
+    def test_documentation_preserves_production_logic(self):
+        report=verify(Path(__file__).resolve().parents[1])
+        self.assertEqual(report['archive_files_verified'],15)
+        self.assertEqual(len(report['production_python']),4)
+        self.assertTrue(all(item['ast_identical_except_docstrings'] and item['executable_tokens_identical']
+                            for item in report['production_python']))
+    # Verify a synthetic acknowledged pair row retains its condition, interval and ordered-response score.
     def test_row_has_correct_condition_and_gap(self):
         config=p.ProtocolConfig()
         short=next(t for t in p.build_schedule(2026,config) if t.pair_gap_sec==2.0)
@@ -66,6 +91,7 @@ class TimingProtocolTests(unittest.TestCase):
         self.assertTrue(r['was_correct'])
         self.assertEqual(r['schema_version'],'1.8.0')
         self.assertEqual(r['confounding_or_spread_report'],True)
+    # Confirm planned conditions remain represented with blank accuracy when no observations exist.
     def test_datastore_persists_condition_and_empty_summary(self):
         with tempfile.TemporaryDirectory() as d:
             config=p.ProtocolConfig()
@@ -83,6 +109,7 @@ class TimingProtocolTests(unittest.TestCase):
             self.assertTrue(all(int(row['planned_trials'])==5 for row in pairs))
             self.assertTrue(all(row['accuracy']=='' for row in summaries))
             self.assertEqual(ds.metadata['planned_trial_count'],80)
+    # Prevent simulated sessions from being accepted as hardware evidence by the timing analyzer.
     def test_analysis_rejects_simulation(self):
         with tempfile.TemporaryDirectory() as d:
             conf=p.ProtocolConfig();schedule=p.build_schedule(1,conf)

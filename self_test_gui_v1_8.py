@@ -7,6 +7,10 @@ firmware v1.5 command: PLAY,channel,1000,48. In a normal hardware run,
 under experiment_output_v1_8. Run `python3 -m unittest discover -s tests -v` to test
 software without attaching an Arduino.
 """
+# Participant interface and session state machine for the v1.8 timing comparison.
+# Tk owns all widgets and response keys; one worker owns the serial connection.
+# The default has 80 pair trials. Enabling 10 single rounds adds 5 orientation
+# and 50 randomized singles, producing the 135-trial recorded configuration.
 from __future__ import annotations
 
 import queue
@@ -33,6 +37,7 @@ MAPPING_TEXT = "Pinky = A     Ring = S     Middle = D     Index = F     Thumb = 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "experiment_output_v1_8"
 
 
+# List serial ports for setup, preferring common macOS Arduino names without assuming a connection.
 def available_ports() -> list[tuple[str, str]]:
     try:
         from serial.tools import list_ports
@@ -42,8 +47,10 @@ def available_ports() -> list[tuple[str, str]]:
     return sorted(records, key=lambda item: ("usbmodem" not in item[0].lower(), item[0]))
 
 
+# Keep blocking serial calls off Tk's event loop and return results through queues.
 class SerialWorker:
     """Own the serial stream in one worker so Tk stays responsive to Stop."""
+    # Start one daemon worker with separate command and result queues for this device.
     def __init__(self, device: HapticDevice):
         self.device = device
         self.jobs: queue.Queue = queue.Queue()
@@ -51,6 +58,7 @@ class SerialWorker:
         self.thread = threading.Thread(target=self._run, daemon=True, name="vspa-serial")
         self.thread.start()
 
+    # Process controller jobs sequentially and return partial pulse records even when a job fails.
     def _run(self) -> None:
         while True:
             kind, payload = self.jobs.get()
@@ -68,12 +76,15 @@ class SerialWorker:
                     raise ValueError("Unknown worker operation.")
             except Exception as exc:
                 error = exc
+            # Return observations, not widget operations; only Tk consumes and presents them.
             self.results.put((kind, records, error))
             if kind == "close":
                 return
 
 
+# Collect configuration and show the planned count before creating the acquisition session.
 class SetupWindow:
+    # Build scrollable settings with fixed action buttons and the 80-pair-trial default.
     def __init__(self, root: tk.Tk, on_start):
         self.root, self.on_start = root, on_start
         root.title("VSPA:PE v1.8 | Two-interval comparison setup")
@@ -140,16 +151,19 @@ class SetupWindow:
         self.update_total()
         self.refresh()
 
+    # Translate wheel events from supported desktop bindings into vertical setup scrolling.
     def scroll(self, event):
         direction = -1 if getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0 else 1
         self.canvas.yview_scroll(direction, "units")
         return "break"
 
+    # Refresh the port labels and their actual device-path lookup used when connecting.
     def refresh(self) -> None:
         self.ports = {label: port for port, label in available_ports()}
         self.port_combo["values"] = list(self.ports)
         self.port.set(next(iter(self.ports), ""))
 
+    # Display 5 + 5*S singles when enabled, plus 8*P pair trials when enabled.
     def update_total(self) -> None:
         try:
             s, p = int(self.single_rounds.get()), int(self.pair_rounds.get())
@@ -158,6 +172,7 @@ class SetupWindow:
         except ValueError:
             self.total.set("Enter whole numbers for the round counts.")
 
+    # Validate settings, choose a seed and persist the schedule before starting the controller worker.
     def start(self) -> None:
         try:
             config = ProtocolConfig(single_rounds=int(self.single_rounds.get()),
@@ -178,7 +193,9 @@ class SetupWindow:
         self.on_start(config, schedule, seed, port, self.simulation.get(), store)
 
 
+# Coordinate trial states, blinded prompts, response capture and orderly session shutdown.
 class VSPAPEApp:
+    # Initialize state, bind response/stop events and queue connection without blocking Tk.
     def __init__(self, root: tk.Tk, config: ProtocolConfig, schedule: list[TrialSpec],
                  seed: int, port: Optional[str], simulation: bool, store: DataStore):
         self.root, self.config, self.schedule = root, config, schedule
@@ -216,6 +233,7 @@ class VSPAPEApp:
         self.worker.jobs.put(("connect", None))
         self.root.after(20, self._poll)
 
+    # Create participant prompts, progress and stop controls without exposing target identities.
     def _build_ui(self) -> None:
         outer = ttk.Frame(self.root, padding=30)
         outer.pack(fill="both", expand=True)
@@ -231,8 +249,10 @@ class VSPAPEApp:
         self.stop_button = ttk.Button(outer, text="Stop session (Esc)", command=self.request_stop, takefocus=False)
         self.stop_button.pack(pady=5)
 
+    # Track delayed Tk callbacks so session termination can cancel pending transitions.
     def _later(self, seconds: float, callback) -> str:
         holder = []
+        # Remove the completed timer token and suppress its transition after shutdown was requested.
         def run():
             self.after_ids.discard(holder[0])
             if self.pending_finish_status is None:
@@ -242,6 +262,7 @@ class VSPAPEApp:
         self.after_ids.add(token)
         return token
 
+    # Consume worker results on the Tk thread and schedule response opening only after delivery returns.
     def _poll(self) -> None:
         if self.state == "finished":
             return
@@ -267,6 +288,8 @@ class VSPAPEApp:
                         self._finish("hardware_error", str(error))
                     else:
                         self.state = "post_stimulus"
+                        # This is a Tk delay after the worker result is polled. Its 0.35-s
+                        # setting is a minimum intended wait, not a physical-onset timestamp.
                         self._later(self.config.response_delay_after_done_sec, self.enable_response)
                 elif kind == "close":
                     if error is not None:
@@ -279,6 +302,7 @@ class VSPAPEApp:
             self._callback_error(type(exc), exc, None)
         self.root.after(20, self._poll)
 
+    # Convert callback/persistence errors into an explicit terminal status and start shutdown.
     def _callback_error(self, exc_type, exc, traceback) -> None:
         """Terminate explicitly when a Tk callback cannot persist its output."""
         status = "output_error" if isinstance(exc, OSError) else "software_error"
@@ -289,6 +313,7 @@ class VSPAPEApp:
         else:
             self._finish(status, reason)
 
+    # Explain key order and the subjective report without presenting the upcoming target or condition.
     def instructions(self) -> None:
         self.state = "instructions"
         self.heading.set("Finger localization")
@@ -296,11 +321,13 @@ class VSPAPEApp:
         self.detail.set("Respond after the response prompt appears. Single trials require one key;\nneighboring-pair trials require two separate key presses in perceived order.\nPress Y or N for the spread or blending question. No correctness feedback is shown.\nA pause follows each complete round.")
         self.action.config(state="normal", text="Begin session", command=self.begin)
 
+    # Record the transition from prepared to running before advancing to the first trial.
     def begin(self) -> None:
         self.store.save_metadata(session_status="running")
         self.store.event("session_started")
         self.next_trial()
 
+    # Advance the saved plan, pause between blocks and apply this trial's assigned pair interval.
     def next_trial(self, pause_checked: bool = False) -> None:
         if self.pending_finish_status is not None:
             return
@@ -324,11 +351,14 @@ class VSPAPEApp:
         self.current_saved = False
         self.records, self.response_keys, self.response_times = [], [], []
         self.response_open, self.report = None, None
+        # Use an immutable per-trial copy so the logged condition and delivered gap agree.
         self.active_trial_config = replace(self.config, adjacent_pair_gap_sec=upcoming.pair_gap_sec) \
             if upcoming.pair_gap_sec is not None else self.config
         self.response_status = "not_started"
         self.state = "pre_trial"
         self.progress.set(f"Trial {upcoming.trial_number} of {len(self.schedule)} | {PHASE_LABELS[upcoming.test_type]} {upcoming.round_number if not upcoming.orientation else ''}")
+        # Progress reveals task/round only. The expected finger order and assigned
+        # 2.0/4.0-s condition remain in the saved plan rather than the participant prompt.
         self.heading.set("Single-finger test" if len(upcoming.fingers) == 1 else "Adjacent-pair test")
         self.prompt.set("Prepare for the next cue.")
         self.detail.set("One finger will vibrate." if len(upcoming.fingers) == 1 else "Two neighboring fingers will vibrate one after the other.")
@@ -340,10 +370,12 @@ class VSPAPEApp:
                          requested_pair_gap_sec=upcoming.pair_gap_sec)
         self._later(self.config.pre_trial_sec, self.deliver)
 
+    # Journal the end of an operator-controlled pause and enter the next planned block.
     def resume_round(self) -> None:
         self.store.event("round_pause_ended", next_block=self.schedule[self.index + 1].block_number)
         self.next_trial(pause_checked=True)
 
+    # Queue the current targets and interval-specific configuration for the serial worker.
     def deliver(self) -> None:
         self.state = "stimulating"
         self.heading.set("Attend to the vibration")
@@ -351,6 +383,7 @@ class VSPAPEApp:
         self.detail.set("")
         self.worker.jobs.put(("stimulate", (self.current.fingers, self.active_trial_config)))
 
+    # Open the response state and define its host-clock origin after the post-delivery delay.
     def enable_response(self) -> None:
         self.state = "waiting_response"
         self.response_status = "waiting"
@@ -365,6 +398,7 @@ class VSPAPEApp:
                          response_window_open_time=self.response_open)
         self.timeout_id = self._later(self.config.response_timeout_sec, self.response_timeout)
 
+    # Retain any partial answer and move a timed-out objective response to the report stage.
     def response_timeout(self) -> None:
         self.timeout_id = None
         if self.state == "waiting_response":
@@ -373,15 +407,18 @@ class VSPAPEApp:
                              responses_entered=len(self.response_keys))
             self.after_response()
 
+    # Allow a later deliberate press of the same key after its release event.
     def on_keyrelease(self, event) -> None:
         self.held_keys.discard(event.keysym.lower())
 
+    # Clear held-key state when releases may occur outside the window, and journal focus loss.
     def on_focus_out(self, event) -> None:
         # A key can be released in another window, where Tk will not receive
         # its KeyRelease. Avoid treating its next real press as a held repeat.
         self.held_keys.clear()
         self.store.event("window_focus_lost", gui_state=self.state)
 
+    # Accept separate in-window response presses, enforce the deadline and journal ignored keys.
     def on_keypress(self, event):
         key = event.keysym.lower()
         if key == "escape":
@@ -405,6 +442,7 @@ class VSPAPEApp:
                                  key=key, response_key_time=stamp)
                 self.response_timeout()
                 return "break"
+            # Store the host key timestamp before later report entry or row serialization.
             self.response_keys.append(key)
             self.response_times.append(stamp)
             self.store.event("response_key", trial_number=self.current.trial_number,
@@ -426,6 +464,7 @@ class VSPAPEApp:
                              trial_number=self.current.trial_number if self.current else None)
         return "break"
 
+    # Collect a separate spread/blending report or finish immediately when that report is disabled.
     def after_response(self) -> None:
         if not self.config.ask_confounding:
             self.complete_trial()
@@ -436,6 +475,7 @@ class VSPAPEApp:
         self.detail.set("Press Y for Yes or N for No.")
         self.response_text.set("")
 
+    # Persist the current trial at most once, including interrupted or technically invalid attempts.
     def _save(self, status: str, error: str = "") -> None:
         if self.current is None or self.current_saved:
             return
@@ -445,6 +485,7 @@ class VSPAPEApp:
         self.store.append_trial(row)
         self.current_saved = True
 
+    # Save the completed row and schedule the inter-trial rest before the next planned cue.
     def complete_trial(self) -> None:
         self._save("completed")
         self.state = "rest"
@@ -454,6 +495,7 @@ class VSPAPEApp:
         self.response_text.set("")
         self._later(self.config.rest_between_trials_sec, self.next_trial)
 
+    # Preserve completed objective answers if Stop occurs during the optional subjective report.
     def _save_interrupted(self) -> None:
         if self.response_status in {"complete", "timeout"}:
             # If Stop occurs during Y/N collection, preserve completed objective
@@ -463,12 +505,14 @@ class VSPAPEApp:
             self.response_status = "aborted" if self.response_open is not None else "not_started"
             self._save("interrupted")
 
+    # Treat Escape/window close as controlled cancellation; close immediately only after finalization.
     def request_stop(self) -> None:
         if self.state == "finished":
             self.root.destroy()
             return
         self._finish("stopped", "Operator selected Stop or closed the session window.")
 
+    # Cancel device waits and queue closure before attempting potentially failing disk writes.
     def _finish(self, status: str, reason: str = "") -> None:
         if self.pending_finish_status is not None:
             return
@@ -496,6 +540,7 @@ class VSPAPEApp:
         self.action.config(state="disabled")
         self.stop_button.config(state="disabled")
 
+    # Finish persistent output after the device-close result and present the saved-row count.
     def finalize(self) -> None:
         try:
             self.store.finish(self.pending_finish_status or "stopped", self.finish_reason)
@@ -510,8 +555,10 @@ class VSPAPEApp:
         self.stop_button.config(state="disabled")
 
 
+# Create the Tk application and retain the session object for its entire event-loop lifetime.
 def main() -> None:
     root = tk.Tk()
+    # Replace setup widgets with the acquisition interface using the already saved session plan.
     def start(config, schedule, seed, port, simulation, store):
         for widget in root.winfo_children():
             widget.destroy()

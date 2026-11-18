@@ -1,9 +1,13 @@
 """Balanced VSPA:PE two-interval comparison acquisition core, version 1.8.
 
 This module is independent of Tk and usable in offline tests. The existing v1.5
-Arduino firmware is retained unchanged. Command acceptance and firmware timers
+Arduino command behavior is retained; original source bytes are archived. Command acceptance and firmware timers
 are software observations; neither establishes physical actuator motion.
 """
+# Acquisition core: schedule construction, serial transactions, scoring and persistence.
+# The default is 80 pair trials (10 rounds); optional single trials are additional.
+# Documentation changes preserve executable acquisition logic. Exact collected-source
+# bytes are in archive/acquisition_v1_8/; hashes are in archive/source_manifest.json.
 from __future__ import annotations
 
 import csv
@@ -43,16 +47,22 @@ PHASE_LABELS = {
 }
 
 
+# Return a wall-clock UTC label for records; elapsed intervals use perf_counter instead.
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+# Immutable session settings separate task selection, drive requests and response timing.
 @dataclass(frozen=True)
 class ProtocolConfig:
-    """Round counts are independent; one full cycle has 5 + 5 + 8 trials."""
+    """Defaults select 80 pair trials: 10 balanced rounds of eight ordered pairs.
+
+    Optional singles add five fixed orientation trials and five per random
+    single round. Ten enabled single rounds plus the default pairs total 135.
+    """
     single_rounds: int = 1
     pair_rounds: int = 10
-    run_single: bool = False  # Prior 50 balanced single-finger trials are already collected.
+    run_single: bool = False  # Pair-only default; optional singles add a separate orientation block.
     run_pair: bool = True
     timing_comparison_enabled: bool = True
     baseline_pair_gap_sec: float = 2.0
@@ -67,6 +77,7 @@ class ProtocolConfig:
     ask_confounding: bool = True
     nominal_frequency_hz: float = 235.0
 
+    # Reject unsupported counts and command ranges before scheduling or serial delivery.
     def validate(self) -> None:
         if not self.run_single and not self.run_pair:
             raise ValueError("Enable at least one task.")
@@ -75,7 +86,7 @@ class ProtocolConfig:
             if type(value) is not int or not 1 <= value <= 100:
                 raise ValueError(f"{name} must be an integer from 1 to 100.")
         # These are the baseline firmware's command constraints, not physical
-        # calibration. The GUI retains 1000 ms, 48 and 2.0 s unchanged.
+        # calibration. The GUI retains 1000 ms and RTP 48; v1.8 compares 2.0/4.0 s.
         if type(self.stimulus_duration_ms) is not int or not 100 <= self.stimulus_duration_ms <= 3000:
             raise ValueError("Pulse request must be an integer from 100 to 3000 ms.")
         if type(self.rtp_drive_value) is not int or not 1 <= self.rtp_drive_value <= 80:
@@ -101,6 +112,7 @@ class ProtocolConfig:
                 raise ValueError("Baseline interval cannot be below pulse duration plus 0.5 s.")
 
 
+# One immutable planned response trial, including its ordered targets and assigned interval.
 @dataclass(frozen=True)
 class TrialSpec:
     trial_number: int
@@ -113,11 +125,13 @@ class TrialSpec:
     timing_condition: str = ""  # baseline_2p0s / long_4p0s, empty for single cues
     pair_gap_sec: Optional[float] = None
 
+    # Create a readable phase/round/trial label; trial_number remains the session-wide key.
     @property
     def pattern_name(self) -> str:
         return f"{self.test_type}_r{self.round_number:03d}_t{self.trial_in_round:02d}"
 
 
+# Allocate intervals with exact round and pair margins using margin-preserving exchanges.
 def _balanced_condition_matrix(rng: random.Random, rounds: int, pair_count: int) -> list[list[int]]:
     """Randomize a binary condition matrix with exact row/column margins.
 
@@ -128,6 +142,8 @@ def _balanced_condition_matrix(rng: random.Random, rounds: int, pair_count: int)
     """
     if pair_count != 8 or rounds % 2 != 0:
         raise ValueError("Expected eight ordered pairs and even number of rounds")
+    # The checkerboard begins with exact margins. Exchanges retain those margins;
+    # this finite mixing procedure does not claim uniform sampling of all matrices.
     matrix = [[int((i + j) % 2 == 0) for j in range(pair_count)] for i in range(rounds)]
     for _ in range(100 * rounds):
         a, b = rng.sample(range(rounds), 2)
@@ -135,6 +151,7 @@ def _balanced_condition_matrix(rng: random.Random, rounds: int, pair_count: int)
         if matrix[a][x] == matrix[b][y] and matrix[a][y] == matrix[b][x] and matrix[a][x] != matrix[a][y]:
             matrix[a][x], matrix[a][y] = matrix[a][y], matrix[a][x]
             matrix[b][x], matrix[b][y] = matrix[b][y], matrix[b][x]
+    # Permuting rows and columns changes allocation without changing either margin.
     rng.shuffle(matrix)
     col_order = list(range(pair_count))
     rng.shuffle(col_order)
@@ -146,11 +163,13 @@ def _balanced_condition_matrix(rng: random.Random, rounds: int, pair_count: int)
     return matrix
 
 
+# Build the seeded plan in memory; DataStore writes the plan before acquisition begins.
 def build_schedule(seed: int, config: ProtocolConfig) -> list[TrialSpec]:
-    """Persist randomized, exactly balanced interval assignments per pair.
+    """Construct randomized, exactly balanced interval assignments per pair.
 
-    The ten-round primary study has 80 trials: 8 pairs x 5 baseline and 5
-    long. Each round has 4 baseline and 4 long to limit time drift.
+    The default ten-round pair task has 80 trials: 8 pairs x 5 baseline and
+    5 long. Each round has 4 baseline and 4 long to limit time drift. Optional
+    single-finger blocks are additional; DataStore persists the returned plan.
     """
     config.validate()
     if type(seed) is not int:
@@ -159,6 +178,7 @@ def build_schedule(seed: int, config: ProtocolConfig) -> list[TrialSpec]:
     schedule: list[TrialSpec] = []
     block = 0
 
+    # Append one complete block with unique trial numbers and its preassigned conditions.
     def add_round(phase: str, number: int, patterns: list[tuple[str, ...]],
                   orientation: bool = False, conditions=None) -> None:
         nonlocal block
@@ -168,6 +188,7 @@ def build_schedule(seed: int, config: ProtocolConfig) -> list[TrialSpec]:
             schedule.append(TrialSpec(len(schedule) + 1, phase, block, number,
                                       within, fingers, orientation, label, gap))
 
+    # Fixed pinky-to-thumb orientation is flagged separately from randomized scores.
     if config.run_single:
         add_round(PHASES[0], 0, [(finger,) for finger in FINGERS], True)
         for number in range(1, config.single_rounds + 1):
@@ -178,8 +199,10 @@ def build_schedule(seed: int, config: ProtocolConfig) -> list[TrialSpec]:
         matrix = _balanced_condition_matrix(rng, config.pair_rounds, len(ORDERED_ADJACENT_PAIRS)) \
             if config.timing_comparison_enabled else None
         for number in range(1, config.pair_rounds + 1):
+            # Shuffle a complete pair list: every ordered neighboring pair occurs once.
             patterns = list(ORDERED_ADJACENT_PAIRS)
             rng.shuffle(patterns)
+            # Assign interval by pair identity, independently of its within-round position.
             condition = None
             if matrix is not None:
                 condition = {pair: ("baseline_2p0s", config.baseline_pair_gap_sec) if matrix[number - 1][i]
@@ -189,11 +212,13 @@ def build_schedule(seed: int, config: ProtocolConfig) -> list[TrialSpec]:
     return schedule
 
 
+# Hash a canonical plan representation so saved schedules can be checked reproducibly.
 def schedule_hash(schedule: list[TrialSpec]) -> str:
     canonical = json.dumps([asdict(trial) for trial in schedule], sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# Compare perceived order with target order; preserve reversal and duplicate-key outcomes.
 def score_response(expected: tuple[str, ...], response: list[str]) -> dict[str, Any]:
     """Score finger identities in temporal order; timeout is handled separately."""
     pair = len(expected) == 2
@@ -207,14 +232,17 @@ def score_response(expected: tuple[str, ...], response: list[str]) -> dict[str, 
     }
 
 
+# Signal a serial/protocol failure that prevents treating the trial as valid acquisition.
 class ProtocolError(RuntimeError):
     pass
 
 
+# Signal deliberate cancellation separately from a controller or persistence failure.
 class StopRequested(RuntimeError):
     pass
 
 
+# Retain each attempted command, reply and host timestamp, including incomplete attempts.
 @dataclass
 class PulseRecord:
     finger: str
@@ -230,6 +258,7 @@ class PulseRecord:
     simulated: bool = False
 
 
+# Serialize controller access and retain acknowledgements without inferring physical motion.
 class HapticDevice:
     """Single-worker serial transport with exact replies and a cancellable wait.
 
@@ -242,6 +271,7 @@ class HapticDevice:
     START_TIMEOUT_SEC = 0.9
     DONE_GRACE_SEC = 1.0
 
+    # Configure hardware or simulation transport and inject serial/event interfaces for testing.
     def __init__(self, port: Optional[str], simulation: bool,
                  event_sink: Optional[Callable[..., None]] = None,
                  serial_factory: Optional[Callable[..., Any]] = None):
@@ -254,14 +284,17 @@ class HapticDevice:
         self._buffer = bytearray()
         self.firmware_response = "SIMULATION" if simulation else ""
 
+    # Forward a transport event to the session journal; normal write failures remain explicit.
     def event(self, name: str, **values: Any) -> None:
         self.event_sink(name, **values)
 
+    # Wait on the cancellation event until a monotonic deadline so Stop can interrupt waits.
     def _wait_until(self, deadline: float) -> None:
         remaining = deadline - time.perf_counter()
         if self.cancel.wait(max(0.0, remaining)):
             raise StopRequested("Session stopped by operator.")
 
+    # Journal the attempt, time the serial call, flush bytes and reject incomplete writes.
     def _write(self, command: str, pulse: Optional[PulseRecord] = None) -> float:
         if self.cancel.is_set():
             raise StopRequested("Session stopped before serial write.")
@@ -283,6 +316,7 @@ class HapticDevice:
                    host_write_complete_time=finished)
         return issued
 
+    # Assemble complete reply lines and enforce the expected transaction before its deadline.
     def _expect(self, kind: str, exact: str, timeout_sec: float) -> tuple[str, float]:
         deadline = time.perf_counter() + timeout_sec
         while time.perf_counter() < deadline:
@@ -308,6 +342,7 @@ class HapticDevice:
             self.event("serial_reply", reply=line, host_reply_time=received)
             if line.startswith("ERR,"):
                 raise ProtocolError("Arduino refused command: " + line)
+            # DONE appends a firmware elapsed-millisecond field, unlike exact START/READY.
             if kind == "DONE" and line.startswith(exact):
                 parts = line.split(",")
                 if len(parts) != 3 or not parts[2].isdigit():
@@ -320,6 +355,7 @@ class HapticDevice:
             # Initialization/status lines can precede PING and are retained.
         raise ProtocolError(f"No {kind} acknowledgement before its timeout; expected {exact}")
 
+    # Open one serial port, allow controller reset and require the exact five-channel signature.
     def connect(self) -> None:
         if self.simulation:
             self.event("simulation_connected", physical_actuation=False)
@@ -344,6 +380,7 @@ class HapticDevice:
         self.firmware_response = reply
         self.event("controller_connected", firmware_response=reply)
 
+    # Append an attempt first, then obtain matching START and timer-based DONE observations.
     def _pulse(self, finger: str, config: ProtocolConfig, records: list[PulseRecord]) -> None:
         channel = CHANNEL_MAP[finger]
         command = f"PLAY,{channel},{config.stimulus_duration_ms},{config.rtp_drive_value}"
@@ -372,19 +409,24 @@ class HapticDevice:
         if record.firmware_elapsed_ms < config.stimulus_duration_ms:
             raise ProtocolError("Controller reported an early DONE; pulse request was interrupted.")
 
+    # Deliver one cue or an ordered neighboring pair using first-command-relative timing.
     def stimulate(self, fingers: tuple[str, ...], config: ProtocolConfig,
                   records: list[PulseRecord]) -> None:
         config.validate()
         if not (len(fingers) == 1 and fingers[0] in FINGERS) and fingers not in ORDERED_ADJACENT_PAIRS:
             raise ValueError("The protocol permits one finger or one ordered neighboring pair.")
+        # First wait for its DONE. The second deadline is still relative to the first
+        # pre-write host timestamp, so acknowledgement latency is not added as a new gap.
         self._pulse(fingers[0], config, records)
         if len(fingers) == 2:
             deadline = records[0].host_command_time + config.adjacent_pair_gap_sec
             self._wait_until(deadline)
             self._pulse(fingers[1], config, records)
 
+    # Attempt STOP and close the serial port even when event journaling cannot be written.
     def close(self) -> None:
         """Called by the serial worker after cancellation; never claims motion stopped."""
+        # Suppress shutdown-only journal failures so an output error cannot block STOP transmission.
         def best_effort_event(name: str, **values: Any) -> None:
             # An output-disk failure must never prevent an attempted motor stop.
             try:
@@ -427,6 +469,7 @@ TRIAL_FIELDS = [
 ]
 
 
+# Combine the plan and observed events into one auditable row, with explicit scoring eligibility.
 def make_trial_row(trial: TrialSpec, config: ProtocolConfig, records: list[PulseRecord],
                    response_keys: list[str], response_times: list[float], response_open: Optional[float],
                    response_status: str, trial_status: str, report: Optional[bool],
@@ -434,6 +477,8 @@ def make_trial_row(trial: TrialSpec, config: ProtocolConfig, records: list[Pulse
     """Build one row, including interrupted or rejected trials without fake scores."""
     response = [KEY_TO_FINGER[key] for key in response_keys]
     completed = sum(bool(p.done_reply) for p in records)
+    # Technical/interrupted attempts stay in the raw log but receive blank scores.
+    # A completed timeout remains an objective outcome; simulation is excluded from summaries.
     valid = trial_status == "completed" and response_status in {"complete", "timeout"} and completed == len(trial.fingers) and not error
     row = asdict(trial)
     row.pop("fingers")
@@ -465,6 +510,7 @@ def make_trial_row(trial: TrialSpec, config: ProtocolConfig, records: list[Pulse
         "pulses_json": json.dumps([asdict(record) for record in records], separators=(",", ":")),
         "response_key_times_json": json.dumps(response_times),
     })
+    # Order is part of correctness: the same two fingers in reverse order are recorded separately.
     scores = score_response(trial.fingers, response)
     row.update(scores if valid else {key: "" for key in scores})
     first = records[0].host_command_time if records else None
@@ -485,10 +531,12 @@ def make_trial_row(trial: TrialSpec, config: ProtocolConfig, records: list[Pulse
     return row
 
 
+# Normalize Boolean values read back from CSV without treating the string 'False' as true.
 def bool_value(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
+# Summarize finite observed numbers; retain blanks when a mean or sample SD is unavailable.
 def describe(values: list[Any]) -> dict[str, Any]:
     usable = [float(value) for value in values if value not in (None, "")]
     usable = [value for value in usable if math.isfinite(value)]
@@ -496,10 +544,12 @@ def describe(values: list[Any]) -> dict[str, Any]:
             "sd": statistics.stdev(usable) if len(usable) >= 2 else ""}
 
 
+# Keep planned, attempted and eligible denominators distinct and reports separate from accuracy.
 def summarize_group(group: list[dict[str, Any]], planned: int) -> dict[str, Any]:
     valid = [row for row in group if bool_value(row.get("descriptive_eligible", False))]
     n = len(valid)
     correct = sum(bool_value(row["was_correct"]) for row in valid)
+    # Missing subjective reports reduce the report denominator, not the objective denominator.
     reports = [bool_value(row["confounding_or_spread_report"]) for row in valid
                if row.get("confounding_or_spread_report", "") != ""]
     latency = describe([row.get("first_key_from_response_open_sec", "") for row in valid])
@@ -522,6 +572,7 @@ def summarize_group(group: list[dict[str, Any]], planned: int) -> dict[str, Any]
     }
 
 
+# Write a derived table with an explicit header and blank cells for unavailable values.
 def write_csv(path: Path, rows: list[dict[str, Any]], fields: Optional[list[str]] = None) -> None:
     fields = fields or (list(rows[0]) if rows else [])
     with path.open("w", newline="", encoding="utf-8") as stream:
@@ -530,8 +581,10 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fields: Optional[list[str]
         writer.writerows(rows)
 
 
+# Own one session folder, raw append-only streams and derived summaries behind a shared lock.
 class DataStore:
     """Append/flush data at each transition and maintain an explicit lifecycle."""
+    # Create a unique output folder and persist configuration, source hashes and the full planned schedule.
     def __init__(self, output_root: Path, participant_id: str, seed: int,
                  config: ProtocolConfig, schedule: list[TrialSpec], simulation: bool):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", participant_id):
@@ -544,6 +597,8 @@ class DataStore:
         self.participant_id, self.seed = participant_id, seed
         self.config, self.schedule, self.simulation = config, schedule, simulation
         self.rows: list[dict[str, Any]] = []
+        # Worker events and Tk trial saves share this reentrant lock; nested journal
+        # calls remain serialized without allowing either thread to overwrite raw records.
         self._lock = threading.RLock()
         self._closed = False
         self._trial_stream = (self.output_dir / "trial_log.csv").open("w", newline="", encoding="utf-8")
@@ -571,6 +626,7 @@ class DataStore:
             "complete_multifinger_sequence_included": False,
             "files_sha256": self._source_hashes(),
         }
+        # Store every planned trial before any command is sent, including future unattempted trials.
         planned = []
         for trial in schedule:
             item = asdict(trial)
@@ -580,6 +636,7 @@ class DataStore:
         self.save_metadata()
         self.event("session_created", planned_trials=len(schedule), simulation_mode=simulation)
 
+    # Record current source bytes; explanatory comments therefore produce new provenance hashes.
     @staticmethod
     def _source_hashes() -> dict[str, str]:
         here = Path(__file__).resolve().parent
@@ -591,14 +648,17 @@ class DataStore:
                 hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
         return hashes
 
+    # Replace metadata atomically after writing a temporary file, under the session lock.
     def save_metadata(self, **updates: Any) -> None:
         with self._lock:
             self.metadata.update(updates)
             path = self.output_dir / "metadata.json"
             temp = self.output_dir / "metadata.json.tmp"
             temp.write_text(json.dumps(self.metadata, indent=2), encoding="utf-8")
+            # Atomic replacement prevents a reader from seeing a partially rewritten JSON file.
             temp.replace(path)
 
+    # Append and flush one event with UTC and host-clock labels for later reconstruction.
     def event(self, name: str, **values: Any) -> None:
         with self._lock:
             if self._closed:
@@ -608,6 +668,7 @@ class DataStore:
             self._events.write(json.dumps(row, separators=(",", ":")) + "\n")
             self._events.flush()
 
+    # Save each trial number once, flush its raw row and update the recorded-row count.
     def append_trial(self, row: dict[str, Any]) -> None:
         with self._lock:
             if self._closed:
@@ -622,6 +683,7 @@ class DataStore:
             self.event("trial_saved", trial_number=row["trial_number"], trial_status=row["trial_status"])
             self.save_metadata(saved_trial_rows=len(self.rows))
 
+    # Regenerate descriptive tables from saved rows while retaining planned zero-coverage conditions.
     def write_summaries(self) -> None:
         """Retain every planned condition, including zero coverage, and phase."""
         phases, conditions, rounds = [], [], []
@@ -666,6 +728,7 @@ class DataStore:
             write_csv(self.output_dir / "timing_condition_summary.csv", timing_overall)
             write_csv(self.output_dir / "timing_by_ordered_pair.csv", timing_pairs)
 
+    # Finalize summaries and lifecycle metadata, then close both raw streams even after errors.
     def finish(self, status: str, reason: str = "") -> None:
         with self._lock:
             if self._closed:

@@ -3,10 +3,16 @@
 
 Run after the experiment, not before. Never generates or imputes trial outcomes.
 Shows valid/attempted sample sizes and separate rates for correct ordered response
-and self-reported blending. Excludes simulated and incomplete sessions by default.
+and self-reported blending. Excludes simulation sessions and other schema
+versions. Partial hardware sessions retain eligible rows and are explicitly
+flagged in session_integrity.csv; completeness is not an exclusion filter.
 
-python3 analyze_timing.py --input experiment_output --output analysis_output
+python3 analyze_timing.py --input experiment_output_v1_8 --output analysis_output
 """
+# Read-only analysis of saved source records; only the chosen output folder is written.
+# Checks schedule/log consistency before reporting descriptive condition summaries.
+# Partial hardware sessions remain visible with explicit completeness and denominators;
+# the script does not create missing trials or infer a population treatment effect.
 from __future__ import annotations
 import argparse
 import csv
@@ -18,11 +24,13 @@ from vspa_protocol import ORDERED_ADJACENT_PAIRS, bool_value, describe, write_cs
 
 CONDITIONS=('baseline_2p0s','long_4p0s')
 
+# Validate hardware session records against saved plans and write condition-level descriptive tables.
 def analyze(input_dir: Path, output_dir: Path) -> dict:
     output_dir.mkdir(parents=True,exist_ok=True)
     session_reports=[]
     overall=[]
     detailed=[]
+    # Recursion supports multiple session folders; duplicate UUIDs are rejected below.
     for metadata_path in sorted(input_dir.rglob('metadata.json')):
         metadata=json.loads(metadata_path.read_text(encoding='utf-8'))
         if metadata.get('schema_version')!='1.8.0':
@@ -42,8 +50,11 @@ def analyze(input_dir: Path, output_dir: Path) -> dict:
             raise ValueError('Dataset was not collected with timing comparison enabled')
         if not metadata['config']['run_pair']:
             raise ValueError('No adjacent-pair trials configured')
+        # Retain the original comparison-key helper; current validation below checks the fields directly.
         def expected_map(row):
             return (row['test_type'],row['expected_finger_sequence'],row['timing_condition'],row['requested_pair_gap_sec'])
+        # Compare logged targets/conditions with the saved plan rather than reconstructing
+        # a new random schedule from a seed or relying on a derived summary table.
         plan={r['trial_number']:r for r in schedule}
         for r in rows:
             if r['trial_number'] not in plan:raise ValueError('Trial not in schedule')
@@ -68,6 +79,8 @@ def analyze(input_dir: Path, output_dir: Path) -> dict:
                 n=sum(p['fingers']=='-'.join(pair) and p['timing_condition']==cond for p in planned_pairs)
                 if n!=metadata['config']['pair_rounds']//2:
                     raise ValueError('A planned ordered pair is not equally allocated across intervals')
+        # Completeness is reported independently of row eligibility. Partial sessions
+        # still contribute their eligible rows with their actual recorded denominators.
         complete=(metadata['session_status']=='completed' and len(pairs)==required and
                   len(rows)==len(schedule) and all(r['trial_status']=='completed' for r in pairs))
         session_reports.append({'session_id':metadata['session_id'],
@@ -80,6 +93,7 @@ def analyze(input_dir: Path, output_dir: Path) -> dict:
             subset=[r for r in pairs if r['timing_condition']==condition]
             if len([p for p in planned_pairs if p['timing_condition']==condition])!=expected:
                 raise ValueError('Planned condition balance was not 4 per round')
+            # Use eligible rows for accuracy, answered reports for blending and observed intervals for timing.
             def summary(seq, planned, label):
                 valid=[r for r in seq if bool_value(r.get('descriptive_eligible',False))]
                 scored=[bool_value(r['was_correct']) for r in valid]
@@ -110,6 +124,8 @@ def analyze(input_dir: Path, output_dir: Path) -> dict:
       'interpretation':'One person with repeated trials, not independent people. Difference is descriptive only. START/DONE do not measure physical skin onset.',
       'primary_outcome':'Self-reported blending yes / blending answers, by condition.',
       'secondary_outcomes':['exact ordered-pair accuracy','order reversals','response timeouts','host command interval']}
+    # A within-session difference is emitted only for a single session; no between-person
+    # independence, significance test or causal effect is implied by repeated trials.
     if len(session_reports)==1:
         b,longer=[next(r for r in overall if r['condition']==x) for x in CONDITIONS]
         if b['blending_rate']!='' and longer['blending_rate']!='':

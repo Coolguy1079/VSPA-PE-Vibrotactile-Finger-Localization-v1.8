@@ -1,0 +1,50 @@
+{
+  "input_session_id": "527d2499-7cd9-4eba-925d-f1c1ca1192de",
+  "input_source": "original recorded v1.8 raw metadata, schedule and trial_log.csv",
+  "comparison": "Original commit source and documented source analyze the same input into separate output folders.",
+  "output_files": [
+    {
+      "path": "analysis_manifest.json",
+      "sha256": "a6e2841ef17a23efd0cca2b68fc164a5d87b88f4123aeaef139c4383ac781734",
+      "bytes": 813,
+      "byte_identical": true
+    },
+    {
+      "path": "session_integrity.csv",
+      "sha256": "ad46cd33633c5dee21cb333507942b863e4929deabb4aefd438cd8252f2d003d",
+      "bytes": 163,
+      "byte_identical": true
+    },
+    {
+      "path": "timing_by_pair.csv",
+      "sha256": "9f26b00d734d6716997290448c8b7d8c3a71ebec032f760e5d02ddf82906fb59",
+      "bytes": 2283,
+      "byte_identical": true
+    },
+    {
+      "path": "timing_summary.csv",
+      "sha256": "8bd2acdb94f15a02c394987b31dd6e6d89034b5d12c9c0d24c5fd73cda1ff540",
+      "bytes": 494,
+      "byte_identical": true
+    }
+  ],
+  "all_outputs_byte_identical": true,
+  "input_files": [
+    {
+      "path": "metadata.json",
+      "sha256": "4d2c5a0a1a0b879acdf51e08c1f966e511377dcd6325797c9356ab6f04f97d5c"
+    },
+    {
+      "path": "schedule.csv",
+      "sha256": "0c3570f40c39dc264ff5b7c35d0ebbba22a2f958179eaa0438eeca2fea7e9f95"
+    },
+    {
+      "path": "trial_log.csv",
+      "sha256": "5bcf7c87fb3bdd11b6ddf04c9c43ff1a82070bd990619e4e2acc185954480a43"
+    }
+  ],
+  "reproduction_commands": [
+    "python3 archive/acquisition_v1_8/analyze_timing.py --input experiment_output_v1_8 --output analysis_comparison/original",
+    "python3 analyze_timing.py --input experiment_output_v1_8 --output analysis_comparison/documented"
+  ]
+}

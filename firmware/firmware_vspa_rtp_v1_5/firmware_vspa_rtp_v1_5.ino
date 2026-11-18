@@ -1,5 +1,7 @@
 /*
   VSPA:PE hardware validation and RTP firmware v1.5
+  Documentation revision: executable tokens and serial commands remain unchanged.
+  Exact pre-documentation bytes are retained in archive/acquisition_v1_8/.
   Uno R3 + TCA9548A at 0x70 + 5 DRV2605L at 0x5A (one per mux channel).
   Channel 0 pinky, 1 ring, 2 middle, 3 index, 4 thumb.
 
@@ -40,6 +42,7 @@ uint16_t pulseDuration = 0;
 char input[64];
 uint8_t inputLen = 0;
 
+// Select one downstream bus so identical driver addresses remain independently accessible.
 bool muxSelect(uint8_t ch) {
   if (ch >= COUNT) return false;
   Wire.beginTransmission(MUX_ADDR);
@@ -47,21 +50,25 @@ bool muxSelect(uint8_t ch) {
   return Wire.endTransmission() == 0;
 }
 
+// Probe an I2C address for acknowledgement; this checks communication, not actuator motion.
 bool responds(uint8_t address) {
   Wire.beginTransmission(address);
   return Wire.endTransmission() == 0;
 }
 
+// Emit the five cached startup-availability flags in pinky-to-thumb channel order.
 void printMask() {
   for (uint8_t i=0; i<COUNT; ++i) Serial.print(available[i] ? '1' : '0');
 }
 
+// Return the fixed firmware signature and startup mask required by the host handshake.
 void identify() {
   Serial.print(F("READY,VSPA_PE_RTP_1.5,mask="));
   printMask();
   Serial.println();
 }
 
+// Recheck the upstream mux and report cached startup driver availability for each channel.
 void reportScan() {
   Wire.beginTransmission(MUX_ADDR);
   bool muxPresent = (Wire.endTransmission() == 0);
@@ -72,7 +79,9 @@ void reportScan() {
   }
 }
 
+// Clear the active playback request and report elapsed firmware time without a motion sensor.
 void stopMotor() {
+  // Idle STOP has no active timer to report; parse() still sends OK,STOP.
   if (!busy) return;
   if (muxSelect(active) && available[active]) {
     if (effectMode) drv[active].stop();
@@ -86,6 +95,7 @@ void stopMotor() {
   effectMode = false;
 }
 
+// Validate the cached channel state and current mux selection before a driver operation.
 bool allowed(uint8_t channel) {
   if (channel >= COUNT || !available[channel]) {
     Serial.print(F("ERR,CHANNEL_UNAVAILABLE,")); Serial.println(channel);
@@ -98,6 +108,7 @@ bool allowed(uint8_t channel) {
   return true;
 }
 
+// Print diagnostic register readbacks; these values are not measured vibration or skin force.
 void dumpRegs(uint8_t ch) {
   if (!allowed(ch)) return;
   // Hexadecimal readbacks help distinguish communication from actuation issues.
@@ -112,12 +123,14 @@ void dumpRegs(uint8_t ch) {
   Serial.println();
 }
 
+// Accept only a nonempty sequence of decimal digits before command fields are converted.
 bool numeric(const char *s) {
   if (!s || !*s) return false;
   for (const char *p=s; *p; ++p) if (*p < '0' || *p > '9') return false;
   return true;
 }
 
+// Dispatch one complete serial line, rejecting unsupported commands, ranges and overlapping plays.
 void parse(char *line) {
   if (!strcmp(line, "PING")) { identify(); return; }
   if (!strcmp(line, "SCAN")) { reportScan(); return; }
@@ -131,6 +144,7 @@ void parse(char *line) {
     if (c<0 || c>=COUNT) { Serial.println(F("ERR,OUT_OF_RANGE")); return; }
     dumpRegs((uint8_t)c); return;
   }
+  // Library-effect diagnostics are a bench path; acquisition uses PLAY in RTP mode.
   if (!strncmp(line, "TESTFX,", 7)) {
     if (busy) { Serial.println(F("ERR,BUSY")); return; }
     if (!numeric(line+7)) { Serial.println(F("ERR,FORMAT")); return; }
@@ -151,6 +165,8 @@ void parse(char *line) {
   if (strncmp(line, "PLAY,", 5)) { Serial.println(F("ERR,UNKNOWN_COMMAND")); return; }
   if (busy) { Serial.println(F("ERR,BUSY")); return; }
 
+  // Require three nonempty numeric tokens before any driver register is changed.
+  // The retained strtok_r parser skips repeated and trailing commas.
   char *save = NULL;
   char *chToken = strtok_r(line+5, ",", &save);
   char *msToken = strtok_r(NULL, ",", &save);
@@ -167,6 +183,7 @@ void parse(char *line) {
   if (!allowed(c)) return;
   drv[c].setMode(DRV2605_MODE_REALTIME);
   drv[c].setRealtimeValue((uint8_t)level);
+  // START is emitted only after mode/RTP readback matches; it is not a sensed motor onset.
   uint8_t mode = (uint8_t)(drv[c].readRegister8(DRV2605_REG_MODE) & 0x07);
   uint8_t rtp = drv[c].readRegister8(DRV2605_REG_RTPIN);
   if (mode != DRV2605_MODE_REALTIME || rtp != (uint8_t)level) {
@@ -175,12 +192,14 @@ void parse(char *line) {
     Serial.print(F("ERR,REGISTER_READBACK,")); Serial.println(c);
     return;
   }
+  // Start the firmware duration clock after successful configuration, before printing START.
   active = c; busy = true; effectMode = false;
   pulseStart = millis(); pulseDuration = (uint16_t)ms;
   Serial.print(F("START,")); Serial.print(c); Serial.print(',');
   Serial.print(ms); Serial.print(','); Serial.println(level);
 }
 
+// Initialize the serial/I2C buses and cache which of the five selected drivers initialized.
 void setup() {
   Serial.begin(9600);
   Wire.begin();
@@ -204,11 +223,14 @@ void setup() {
   reportScan();
 }
 
+// Check the active software timer while collecting bounded newline-terminated serial commands.
 void loop() {
+  // Unsigned subtraction keeps the elapsed-duration comparison valid across millis() rollover.
   if (busy && (uint32_t)(millis() - pulseStart) >= pulseDuration) stopMotor();
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
     if (c == '\r') continue;
+    // Parse only completed lines; reserve one buffer byte for the terminating null character.
     if (c == '\n') {
       input[inputLen] = '\0';
       if (inputLen > 0) parse(input);

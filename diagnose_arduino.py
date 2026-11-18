@@ -9,6 +9,9 @@ python diagnose_arduino.py --list
 python diagnose_arduino.py --port /dev/cu.usbmodem...   # macOS
 python diagnose_arduino.py --port COM3                   # Windows
 """
+# Interactive controller diagnostics, separate from the acquisition state machine.
+# This console sends operator-entered commands and prints software replies; it does
+# not create participant records or measure actuator motion, voltage or skin force.
 import argparse
 import sys
 import time
@@ -20,6 +23,7 @@ except ImportError:
     raise SystemExit("Install PySerial: python -m pip install pyserial")
 
 
+# Send one newline-terminated console command and collect printable replies until the deadline.
 def query(device, command, wait_sec=0.4):
     device.write((command + "\n").encode("ascii"))
     device.flush()
@@ -40,6 +44,7 @@ def query(device, command, wait_sec=0.4):
     return lines
 
 
+# Provide port discovery and an interactive bench console, attempting STOP when the console exits.
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--port", help="USB serial port for Arduino Uno")
@@ -55,6 +60,7 @@ def main():
     print("STOP stops the active motor, and Ctrl+C exits after STOP.")
     with serial.Serial(args.port, 9600, timeout=0.05, write_timeout=0.5) as dev:
         time.sleep(2.0)
+        # Discard reset chatter before PING; the console does not certify measured motion.
         dev.reset_input_buffer()
         hello = query(dev, "PING", wait_sec=1.0)
         if not any(x.startswith("READY,VSPA_PE_RTP_1.5,") for x in hello):
@@ -77,6 +83,7 @@ def main():
                 ):
                     print("Unrecognized command. Try SCAN, REG,0, TESTFX,0, PLAY,0,1000,48 or STOP")
                     continue
+                # Bench stimulation requires a separate typed acknowledgement for each command.
                 if command.startswith(("PLAY,", "TESTFX,")):
                     print("Confirm: motors are on the BENCH, NOT on your hand.")
                     if input("Type BENCH to proceed: ").strip() != "BENCH":

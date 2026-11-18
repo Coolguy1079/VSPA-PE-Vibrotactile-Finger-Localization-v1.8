@@ -1,0 +1,68 @@
+VSPA:PE v1.8 documentation revision: offline verification record
+Source baseline: 6041d4adc8f4c507671996160b7b0f3a439b69ef
+
+Original-source baseline command:
+  python -m unittest discover -s tests -v
+Result: 8 tests passed in 3.840 s.
+
+Documented-source command:
+  python -m unittest discover -s tests -v
+
+test_both_gap_conditions_drive_unchanged_command ... ok
+test_1000_random_seeds_have_exact_balance ... ok
+test_analysis_rejects_simulation ... ok
+test_datastore_persists_condition_and_empty_summary ... ok
+test_documentation_preserves_production_logic ... ok
+test_firmware_and_serial_transport_executable_equivalence ... ok
+test_invalid_comparisons_and_optional_singles ... ok
+test_row_has_correct_condition_and_gap ... ok
+test_seed_reconstructibility ... ok
+
+Ran 9 tests in 4.250 s. OK.
+The balance regression covers 1,000 random seeds at the default 80 pair trials.
+All seven original functional-test method ASTs are identical. The original
+source-identity test was maintained, and one production-equivalence test was added.
+
+Standalone proof command:
+  python verify_documentation.py --json documentation_equivalence.json
+
+Verified 15 frozen files, four Python modules, v1.6 transport equivalence
+and firmware non-comment tokens.
+All production ASTs and executable Python tokens match after excluding only
+the four identified module/class/function docstring corrections.
+HapticDevice AST and tokens, including its docstrings, match the v1.6 baseline.
+Frozen firmware SHA-256:
+  80ed2073bf716c7eb4119e36874482bf187c2f0f37aabadc7f22a3d2b9b1bea0
+
+Targeted verifier controls:
+  Added comments accepted.
+  Firmware RTP-constant modification rejected.
+  Quoted firmware string modification rejected, including comment-like text.
+  Compound-operator modification rejected.
+  Python numeric-constant modification rejected.
+  Serial-protocol string modification rejected.
+
+Documentation coverage:
+  104 active named Python class/function/method definitions have explanatory
+  comments or docstrings, including the tests and verification utility.
+  All 12 firmware functions have purpose comments.
+  All active Python files and tests parse successfully.
+
+Recorded-data analysis comparison:
+  The original and documented analyze_timing.py scripts read the same recorded
+  raw session and wrote separate temporary result directories.
+  Session: 527d2499-7cd9-4eba-925d-f1c1ca1192de
+  135 planned and saved rows, including 80 pair trials; complete protocol true.
+  analysis_manifest.json: byte-identical.
+  session_integrity.csv: byte-identical.
+  timing_by_pair.csv: byte-identical.
+  timing_summary.csv: byte-identical.
+  Full output hashes: analysis_equivalence.json.
+  All three source hashes in the recorded session metadata match the archive.
+
+Scope:
+  Tests and source comparison are offline. No new physical motor data or
+  participant observations were created. This revision did not compile/upload
+  firmware or establish physical Arduino/actuator or native macOS operation.
+  Comment/docstring changes intentionally change source-byte hashes, line
+  numbers, documentation introspection and the analyzer help description.

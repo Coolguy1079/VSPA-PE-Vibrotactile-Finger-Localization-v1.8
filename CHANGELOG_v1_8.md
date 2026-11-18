@@ -11,3 +11,14 @@
 - Updated offline schedule, serial, storage and analysis tests. No physical vibration measurements were performed as part of software modification.
 
 **Interpretation:** This is a change of experimental conditions; do not describe it as increasing the pause between completed trials. The latter remains configured at 2.0 seconds, aside from operator-paced breaks after rounds. Software timestamps measure command issuance, not motion at the finger.
+
+
+## Documentation update: November 17, 2026
+
+- Added file headers, function and method explanations, and inline comments to the active Python modules, test helpers, and Arduino firmware.
+- Corrected outdated descriptions of the default trial count, schedule persistence, and treatment of incomplete hardware sessions.
+- Preserved the exact pre-documentation source in `archive/acquisition_v1_8/` and recorded its hashes in `archive/source_manifest.json`.
+- Added a reproducible source-equivalence check and maintained the firmware/transport regression so explanatory comments do not cause false failures.
+- Updated operating documentation to distinguish the 80-trial default from the recorded 135-trial SELF02 configuration.
+
+The acquisition logic, randomization algorithm, serial commands, response scoring, and firmware executable tokens are unchanged. The four corrected docstrings, comments, source line numbers, and resulting file hashes differ. Original session records and the earlier v1.6 source remain unchanged.

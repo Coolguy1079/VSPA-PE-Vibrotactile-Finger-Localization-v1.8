@@ -1,0 +1,18 @@
+VSPA:PE TWO-INTERVAL TEST v1.8
+===============================
+
+1. Extract this entire ZIP. The trial timing comparison is 2.0 vs 4.0 seconds. Do not run the program from inside the ZIP.
+2. Keep self_test_gui_v1_8.py AND vspa_protocol.py in the same folder.
+3. Keep existing v1.5 Arduino firmware. Do not change the RTP 48 or 1-second pulse.
+4. Bench-check all five repaired motors with the glove off the body.
+5. Close Arduino Serial Monitor, select port, Simulation OFF.
+6. Single fingers OFF; Adjacent pairs ON; Adjacent rounds = 10. Total = 80.
+7. Run self_test_gui_v1_8.py in Spyder or Python. Rest between rounds.
+8. Save the full experiment_output_v1_8 subfolder after the run.
+9. Run: python3 analyze_timing.py --input experiment_output_v1_8 --output analysis_output
+
+Each of 8 ordered neighbor pairs is requested 5 times at 2.0s and 5 at 4.0s.
+These values are first-to-second COMMAND gap targets, not measured motor motion.
+No physical v1.8 session has been conducted or fabricated by this package.
+
+INTERVALS: 2.0 s BASELINE vs 4.0 s LONG, 40 trials per condition.

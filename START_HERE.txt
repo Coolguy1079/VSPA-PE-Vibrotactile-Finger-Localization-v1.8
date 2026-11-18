@@ -13,6 +13,8 @@ VSPA:PE TWO-INTERVAL TEST v1.8
 
 Each of 8 ordered neighbor pairs is requested 5 times at 2.0s and 5 at 4.0s.
 These values are first-to-second COMMAND gap targets, not measured motor motion.
-No physical v1.8 session has been conducted or fabricated by this package.
+The repository includes the completed SELF02 hardware session: 135 trials because optional single-finger testing was enabled. The 80-trial value above is the timing-only default.
+
+The active source contains explanatory comments. Exact pre-documentation acquisition sources remain under archive/acquisition_v1_8/. No new observations were created by the documentation revision. See README.md for the recorded study and verification commands.
 
 INTERVALS: 2.0 s BASELINE vs 4.0 s LONG, 40 trials per condition.
